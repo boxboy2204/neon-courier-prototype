@@ -3,7 +3,8 @@
 A lightweight browser prototype for the `Neon Courier` game idea.
 
 ## Run
-- Open `/Users/Joseph/Code/Games/Neon Courier Prototype/index.html` in a browser.
+- Run on GitHub Pages: [Play Neon Courier](https://boxboy2204.github.io/neon-courier-prototype/)
+- Run locally: open `/Users/Joseph/Code/Games/Neon Courier Prototype/index.html` in a browser.
 
 ## Current loop
 1. Pick one of 3 contracts.
