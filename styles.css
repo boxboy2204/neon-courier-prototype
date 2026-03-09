@@ -1,0 +1,248 @@
+:root {
+  --bg0: #0a0f1e;
+  --bg1: #101a33;
+  --bg2: #1f2b4d;
+  --panel: #101a2ccc;
+  --text: #e8f1ff;
+  --muted: #a9b7d6;
+  --accent: #1de0ff;
+  --good: #6cff9a;
+  --warn: #ffcf58;
+  --bad: #ff5f7f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 20% 10%, #233b7a 0%, transparent 34%),
+    radial-gradient(circle at 80% 5%, #1f5a63 0%, transparent 25%),
+    linear-gradient(160deg, var(--bg0), var(--bg1) 50%, var(--bg2));
+}
+
+.app {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 2vw, 2.3rem);
+  letter-spacing: 0.04em;
+}
+
+.topbar p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.hud,
+.panel,
+.controls,
+.legend {
+  background: var(--panel);
+  border: 1px solid #2e4c75;
+  border-radius: 12px;
+}
+
+.hud {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  padding: 10px;
+}
+
+.stat {
+  padding: 8px;
+  background: #0b1323;
+  border-radius: 10px;
+  border: 1px solid #274162;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.value {
+  font-size: 1.15rem;
+  margin-top: 2px;
+}
+
+.panel {
+  padding: 14px;
+  line-height: 1.35;
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 1.08rem;
+  letter-spacing: 0.02em;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.card {
+  border: 1px solid #32567b;
+  border-radius: 10px;
+  background: #0d1a2f;
+  padding: 10px;
+}
+
+.card.selected {
+  border-color: #1de0ff;
+  box-shadow: 0 0 0 1px #1de0ff55;
+}
+
+.card p {
+  margin: 5px 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.danger-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.danger-low {
+  background: #1f4738;
+  color: #8df7bb;
+  border: 1px solid #3c7d64;
+}
+
+.danger-medium {
+  background: #4c3b1a;
+  color: #ffd578;
+  border: 1px solid #7f6431;
+}
+
+.danger-high {
+  background: #5a2528;
+  color: #ff9da9;
+  border: 1px solid #8a3d44;
+}
+
+.danger-extreme {
+  background: #6a1e2e;
+  color: #ff8ea8;
+  border: 1px solid #ad425f;
+}
+
+button {
+  border: 1px solid #3a729f;
+  background: linear-gradient(180deg, #123d5e, #0b2943);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+button:hover {
+  filter: brightness(1.1);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.game-wrap {
+  display: grid;
+  gap: 10px;
+}
+
+canvas {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #2f5b86;
+  background: #08101d;
+}
+
+.legend {
+  padding: 8px 10px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.player { background: var(--accent); }
+.dest { background: var(--good); }
+.gang { background: var(--bad); }
+.patrol { background: #ffa930; }
+.flood { background: #4a7fbf; }
+
+.controls {
+  padding: 8px 10px;
+  color: var(--muted);
+}
+
+.preview-wrap {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 12px;
+  align-items: start;
+  background: #0b1323;
+  border: 1px solid #274162;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+#routePreview {
+  border: 1px solid #2f5b86;
+  border-radius: 8px;
+  background: #08101d;
+}
+
+.control-row {
+  margin-top: 12px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.bad { color: var(--bad); }
+.good { color: var(--good); }
+.warn { color: var(--warn); }
+
+@media (max-width: 780px) {
+  .hud {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .preview-wrap {
+    grid-template-columns: 1fr;
+  }
+}
