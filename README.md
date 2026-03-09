@@ -1,4 +1,4 @@
-# Neon Courier Prototype
+# Neon Courier
 
 A lightweight browser prototype for the `Neon Courier` game idea.
 
