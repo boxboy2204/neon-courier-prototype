@@ -15,7 +15,7 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
-# Touching this workflow retriggers deployment after repo permission changes.
+# Touching this workflow retriggers deployment after Pages source changes.
 
 jobs:
   deploy:
