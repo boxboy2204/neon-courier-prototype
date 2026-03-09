@@ -15,6 +15,8 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+# Touching this workflow retriggers deployment after repo permission changes.
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
