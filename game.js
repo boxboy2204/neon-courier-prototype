@@ -72,14 +72,20 @@ const state = {
     bossUnlocked: false,
     bossCompleted: 0,
     bikeCondition: 1,
-    introsSeen: false
+    introsSeen: false,
+    tutorialCompleted: false,
+    totalRuns: 0,
+    successfulRuns: 0
   },
   heatActionsUsed: {
     bribe: 0,
     cooldown: 0
   },
   lastRunSummary: null,
-  uiScreen: "title"
+  uiScreen: "title",
+  profile: {
+    lastPlayedAt: 0
+  }
 };
 
 const audio = {
@@ -182,6 +188,15 @@ const bossVariants = [
   }
 ];
 
+const contractEvents = [
+  { key: "none", label: "Clear Streets", desc: "No special route event. Pure courier pressure.", unlockRep: 0 },
+  { key: "roadblock", label: "Roadblock Grid", desc: "Static barricades cut off lane space and force line changes.", unlockRep: 8 },
+  { key: "scanner_sweep", label: "Scanner Sweep", desc: "Security scans punish illegal cargo if you stay exposed.", unlockRep: 14 },
+  { key: "moving_hazard", label: "Moving Hazard", desc: "A heavy hauler or fast interceptor crosses your route.", unlockRep: 22 },
+  { key: "fake_checkpoint", label: "Fake Checkpoint", desc: "A decoy marker appears before the real route marker.", unlockRep: 28 },
+  { key: "shortcut_alley", label: "Shortcut Alley", desc: "A narrow side route opens with faster progress but tighter space.", unlockRep: 36 }
+];
+
 const upgradeTracks = [
   {
     slot: "speed",
@@ -268,6 +283,10 @@ function getUnlockedBossVariants() {
   return bossVariants.filter((variant) => state.campaign.bossCompleted >= variant.unlockBosses);
 }
 
+function getUnlockedContractEvents() {
+  return contractEvents.filter((event) => state.rep >= event.unlockRep);
+}
+
 function isCosmeticUnlocked(item) {
   return state.rep >= (item.unlockRep || 0) && state.campaign.bossCompleted >= (item.unlockBosses || 0);
 }
@@ -290,6 +309,10 @@ function getNextDistrictUnlock() {
 
 function getNextObjectiveUnlock() {
   return objectivePool.find((objective) => state.rep < objective.unlockRep) || null;
+}
+
+function getNextContractEventUnlock() {
+  return contractEvents.find((event) => state.rep < event.unlockRep) || null;
 }
 
 function getChainNight(contract = null) {
@@ -331,9 +354,13 @@ function saveProgress() {
       bikeOwned: state.bikeOwned,
       bikeEquipped: state.bikeEquipped,
       campaign: state.campaign,
-      heatActionsUsed: state.heatActionsUsed
+      heatActionsUsed: state.heatActionsUsed,
+      profile: {
+        lastPlayedAt: Date.now()
+      }
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+    state.profile.lastPlayedAt = payload.profile.lastPlayedAt;
   } catch (_err) {
     // Ignore storage failures (private mode/restricted contexts).
   }
@@ -397,6 +424,9 @@ function loadProgress() {
       state.heatActionsUsed.bribe = Math.max(0, Number(data.heatActionsUsed.bribe) || 0);
       state.heatActionsUsed.cooldown = Math.max(0, Number(data.heatActionsUsed.cooldown) || 0);
     }
+    if (data.profile && typeof data.profile === "object") {
+      state.profile.lastPlayedAt = Number(data.profile.lastPlayedAt) || 0;
+    }
   } catch (_err) {
     // Ignore malformed/blocked storage.
   }
@@ -430,9 +460,13 @@ function resetAllProgressOnce() {
     state.campaign.bossCompleted = 0;
     state.campaign.bikeCondition = 1;
     state.campaign.introsSeen = false;
+    state.campaign.tutorialCompleted = false;
+    state.campaign.totalRuns = 0;
+    state.campaign.successfulRuns = 0;
     state.heatActionsUsed.bribe = 0;
     state.heatActionsUsed.cooldown = 0;
     state.lastRunSummary = null;
+    state.profile.lastPlayedAt = 0;
 
     localStorage.setItem(FULL_RESET_ONCE_KEY, "1");
     localStorage.setItem(UPGRADES_RESET_ONCE_KEY, "1");
@@ -452,6 +486,45 @@ function resetUpgradeProgressOnce() {
     saveProgress();
     state.message = "Upgrade progress has been reset.";
     state.panelDirty = true;
+  } catch (_err) {
+    // Ignore storage failures.
+  }
+}
+
+function resetProfileProgress() {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+    state.credits = 120;
+    state.rep = 0;
+    state.day = 1;
+    state.cityHeat = 0;
+    for (const key of Object.keys(state.upgrades)) state.upgrades[key] = 0;
+    for (const key of Object.keys(state.bikeOwned)) state.bikeOwned[key] = false;
+    for (const key of Object.keys(state.bikeEquipped)) state.bikeEquipped[key] = false;
+    state.mode = "contracts";
+    state.contracts = [];
+    state.selectedContractId = null;
+    state.selectedPreview = null;
+    state.selectedRoutePlan = null;
+    state.currentContract = null;
+    state.run = null;
+    state.message = "New profile started.";
+    state.panelDirty = true;
+    state.campaign.chainProgress = 0;
+    state.campaign.bossUnlocked = false;
+    state.campaign.bossCompleted = 0;
+    state.campaign.bikeCondition = 1;
+    state.campaign.introsSeen = false;
+    state.campaign.tutorialCompleted = false;
+    state.campaign.totalRuns = 0;
+    state.campaign.successfulRuns = 0;
+    state.heatActionsUsed.bribe = 0;
+    state.heatActionsUsed.cooldown = 0;
+    state.lastRunSummary = null;
+    state.uiScreen = "title";
+    state.profile.lastPlayedAt = 0;
+    generateContracts();
+    saveProgress();
   } catch (_err) {
     // Ignore storage failures.
   }
@@ -1186,6 +1259,7 @@ function makeBossContract() {
     id: createId(),
     district,
     bossVariant,
+    event: { key: "boss_setpiece", label: "Boss Setpiece", desc: bossVariant.desc, unlockRep: 0 },
     trait: { key: "illegal", label: "Boss: Black Box" },
     reward: baseReward,
     timeLimit: 38,
@@ -1201,18 +1275,30 @@ function generateContracts() {
   const progression = 1 + clamp((state.day - 1) * 0.025 + state.campaign.chainProgress * 0.035, 0, 0.95);
   const earlyRelief = state.rep < 20 ? 0.92 : state.rep < 45 ? 0.97 : 1;
   const availableDistricts = getAvailableDistricts();
+  const unlockedEvents = getUnlockedContractEvents();
+  const pickEvent = (district, trait) => {
+    if (!state.campaign.tutorialCompleted) return contractEvents[0];
+    const weighted = unlockedEvents.filter((event) => event.key === "none" || state.rep >= event.unlockRep);
+    if (district.key === "glass_market" && trait.key === "illegal") return weighted.find((event) => event.key === "scanner_sweep") || weighted[0];
+    if (district.key === "rust_perimeter") return weighted.find((event) => event.key === "roadblock") || weighted[0];
+    if (district.key === "skyway_heights") return weighted.find((event) => event.key === "moving_hazard") || weighted[0];
+    return weighted[randi(0, weighted.length - 1)];
+  };
   const normalContracts = Array.from({ length: 3 }, () => {
     const district = availableDistricts[randi(0, availableDistricts.length - 1)];
     const trait = packageTraits[randi(0, packageTraits.length - 1)];
     const objective = pickObjective({ trait, isBoss: false });
+    const event = pickEvent(district, trait);
     const baseReward = randi(82, 138) * progression;
     const risk = ((district.flood + district.gangs + district.patrol) / 3) * trait.risk * (0.88 + progression * 0.22) * earlyRelief;
     const timeLimit = clamp((44.5 - risk * 8 - state.cityHeat * 1.05) * objective.timeMult, 26, 48);
-    const reward = Math.round(baseReward * (1 + risk * 0.7) * trait.reward * objective.rewardMult);
+    const eventReward = event.key === "none" ? 1 : 1.08 + unlockedEvents.findIndex((item) => item.key === event.key) * 0.015;
+    const reward = Math.round(baseReward * (1 + risk * 0.7) * trait.reward * objective.rewardMult * eventReward);
     return {
       id: createId(),
       district,
       trait,
+      event,
       reward,
       timeLimit,
       risk: clamp(risk, 0.2, 1.8),
@@ -1229,6 +1315,7 @@ function generateContracts() {
     const contract = normalContracts[idx];
     contract.trait = illegalTrait;
     contract.objective = pickObjective(contract);
+    contract.event = pickEvent(contract.district, illegalTrait);
     const illegalRisk = (contract.district.flood + contract.district.gangs + contract.district.patrol) / 3 * illegalTrait.risk;
     contract.risk = clamp(illegalRisk, 0.2, 1.8);
     contract.timeLimit = clamp((43 - illegalRisk * 8.2 - state.cityHeat * 1.1) * contract.objective.timeMult, 25, 45);
@@ -1248,6 +1335,23 @@ function generateContracts() {
 
   if (state.campaign.bossUnlocked) {
     normalContracts[0] = makeBossContract();
+  }
+
+  if (!state.campaign.tutorialCompleted) {
+    const tutorialDistrict = getDistrictByKey("harbor_neon");
+    normalContracts[0] = {
+      id: createId(),
+      district: tutorialDistrict,
+      trait: packageTraits.find((trait) => trait.key === "decoy") || packageTraits[0],
+      event: contractEvents[0],
+      reward: 135,
+      timeLimit: 48,
+      risk: 0.42,
+      objective: objectivePool[0],
+      forecast: null,
+      isBoss: false,
+      tutorial: true
+    };
   }
 
   state.contracts = normalContracts;
@@ -1477,9 +1581,70 @@ function makeRun(contract, routePlan) {
     flash: 0
   }));
 
+  const event = contract.event || contractEvents[0];
+  const districtMechanic = contract.district.key === "harbor_neon"
+    ? "wake_surge"
+    : contract.district.key === "glass_market"
+      ? "scanner_grid"
+      : contract.district.key === "rust_perimeter"
+        ? "debris_kick"
+        : "crosswind";
+  const eventProps = {
+    roadblocks: [],
+    fakeNode: null,
+    shortcutGate: null,
+    movingHazard: null,
+    scannerSweep: null
+  };
+  if (event.key === "roadblock") {
+    eventProps.roadblocks = Array.from({ length: contract.isBoss ? 3 : 2 }, (_, idx) => ({
+      x: rand(280 + idx * 140, worldWidth - 160),
+      y: laneYs[randi(0, laneYs.length - 1)] - 22,
+      w: rand(72, 110),
+      h: 44
+    }));
+  } else if (event.key === "fake_checkpoint") {
+    const realNode = routePath[Math.min(routePath.length - 1, 1)];
+    eventProps.fakeNode = {
+      x: clamp(realNode.x + rand(50, 120), 120, worldWidth - 120),
+      y: clamp(realNode.y + rand(-70, 70), 70, HEIGHT - 70),
+      radius: 12,
+      hit: false
+    };
+  } else if (event.key === "shortcut_alley") {
+    eventProps.shortcutGate = {
+      x: clamp(routePath[midNodeIndex].x - 80, 180, worldWidth - 200),
+      y: clamp(routePath[midNodeIndex].y - 90, 60, HEIGHT - 180),
+      w: 110,
+      h: 70,
+      used: false
+    };
+  } else if (event.key === "moving_hazard") {
+    eventProps.movingHazard = {
+      x: worldWidth + 120,
+      y: laneYs[randi(0, laneYs.length - 1)],
+      dir: -1,
+      speed: contract.district.key === "skyway_heights" ? 220 : 140,
+      kind: contract.district.key === "skyway_heights" ? "interceptor" : "truck",
+      w: contract.district.key === "skyway_heights" ? 34 : 60,
+      h: contract.district.key === "skyway_heights" ? 16 : 24,
+      color: contract.district.key === "skyway_heights" ? "#d9e8ff" : "#8f775e"
+    };
+  } else if (event.key === "scanner_sweep") {
+    eventProps.scannerSweep = {
+      x: routePath[midNodeIndex].x,
+      width: 140,
+      timer: 8,
+      pulse: 0,
+      hitIllegal: false
+    };
+  }
+
   return {
     district: contract.district,
     bossVariant: contract.bossVariant || null,
+    event,
+    districtMechanic,
     player,
     destination,
     gangs,
@@ -1488,13 +1653,15 @@ function makeRun(contract, routePlan) {
     drones,
     spikeStrips,
     police,
+    eventProps,
     routePlan,
     laneYs,
     currentLaneIndex: 1,
     checkpointFlash: 0,
     checkpointLabel: "",
     policeWarningTimer: contract.trait.key === "illegal" ? 2.2 : 0,
-    tutorialOverlay: !state.campaign.introsSeen || state.day <= 3,
+    tutorialOverlay: !state.campaign.tutorialCompleted || state.day <= 3,
+    tutorialStep: contract.tutorial ? 0 : -1,
     nearMisses: 0,
     nearMissFlash: 0,
     worldWidth,
@@ -1508,7 +1675,7 @@ function makeRun(contract, routePlan) {
     tookDamage: false,
     policeHits: 0,
     bossPhaseIndex: 0,
-    bossPhaseNodes: contract.isBoss ? [2, 4] : [],
+    bossPhaseNodes: contract.isBoss ? [2, 4, 6] : [],
     bossEscapeActive: false,
     bossEscapePoint: { x: 70, y: rand(80, HEIGHT - 80), radius: 18 },
     bossEscapeTimer: 10,
@@ -1681,7 +1848,9 @@ function startContract(contractId) {
   state.currentContract = contract;
   state.mode = "run";
   const objectiveLabel = contract.objective ? ` Objective: ${contract.objective.label}.` : "";
-  state.message = (contract.isBoss
+  state.message = (contract.tutorial
+    ? "Tutorial delivery active. Follow the route line, settle into lanes, and finish clean."
+    : contract.isBoss
     ? "Boss delivery active. Long-route gauntlet with 8 checkpoints."
     : contract.trait.key === "illegal"
       ? "Illegal package detected. Keep moving if sirens arrive."
@@ -1745,6 +1914,7 @@ function finishRun(success, reason) {
   if (!run || !c || run.done) return;
 
   run.done = true;
+  state.campaign.totalRuns += 1;
   state.mode = "result";
   stopPoliceSirenSample();
 
@@ -1757,9 +1927,12 @@ function finishRun(success, reason) {
   }
 
   if (success) {
+    state.campaign.successfulRuns += 1;
     const integrityBonus = Math.round(Math.max(0, run.integrity) * 0.6);
     const objectiveBonus = Math.round(c.reward * (c.objective?.completionBonus || 0));
-    const payout = c.reward + integrityBonus + objectiveBonus;
+    const chainBonus = c.isBoss ? 0 : Math.round(c.reward * state.campaign.chainProgress * 0.03);
+    const legalStabilityBonus = c.trait.key === "illegal" ? 0 : Math.round((10 - state.cityHeat) * 3);
+    const payout = c.reward + integrityBonus + objectiveBonus + chainBonus + legalStabilityBonus;
     const integrityRatio = clamp(run.integrity / Math.max(1, run.maxIntegrity), 0, 1);
     const wasIllegal = c.trait.key === "illegal";
     let heatDelta = wasIllegal ? 1 : 0.4;
@@ -1794,11 +1967,12 @@ function finishRun(success, reason) {
     } else {
       state.campaign.bikeCondition = clamp(run.integrity / Math.max(1, run.maxIntegrity), 0.35, 1);
       state.campaign.chainProgress = clamp(state.campaign.chainProgress + 1, 0, 5);
+      if (c.tutorial) state.campaign.tutorialCompleted = true;
       if (state.campaign.chainProgress >= 5 && !state.campaign.bossUnlocked) {
         state.campaign.bossUnlocked = true;
         state.message = `Delivered. +${payout} credits. Heat ${heatText}. 5-night chain complete, boss delivery unlocked.`;
       } else {
-        state.message = `Delivered. +${payout} credits (${c.reward} base + ${integrityBonus} integrity + ${objectiveBonus} objective). Heat ${heatText}.`;
+        state.message = `Delivered. +${payout} credits (${c.reward} base + ${integrityBonus} integrity + ${objectiveBonus} objective + ${chainBonus} chain + ${legalStabilityBonus} stability). Heat ${heatText}.`;
       }
     }
     playSfx("deliver");
@@ -1894,6 +2068,7 @@ function renderPanel() {
   if (state.uiScreen === "title" && state.mode !== "run") {
     const nextDistrict = getNextDistrictUnlock();
     const nextObjective = getNextObjectiveUnlock();
+    const nextEvent = getNextContractEventUnlock();
     panel.innerHTML = `
       <h2>Neon Courier</h2>
       <div class="cards" style="margin-bottom: 12px;">
@@ -1909,14 +2084,15 @@ function renderPanel() {
         </article>
       </div>
       <div class="control-row">
-        <button data-open-board="1">Open Contract Board</button>
+        <button data-open-board="1">${state.profile.lastPlayedAt ? "Continue" : "Start Riding"}</button>
         <button data-open-progression="1">View Progression</button>
         <button data-open-customize="1">Open Garage</button>
+        <button data-open-profile="1">Profile</button>
       </div>
       <div class="cards" style="margin-top: 12px;">
         <article class="card">
           <strong>How to Play</strong>
-          <p>1. Preview a route. 2. Accept the contract. 3. Stay in lanes when traffic pressure rises. 4. Hit checkpoints in order.</p>
+          <p>1. Preview a route. 2. Accept the contract. 3. Stay in lanes when traffic pressure rises. 4. Hit checkpoints in order. 5. Watch for route events.</p>
         </article>
         <article class="card">
           <strong>Wanted Cargo</strong>
@@ -1926,12 +2102,41 @@ function renderPanel() {
           <strong>First 3 Nights</strong>
           <p>Take legal contracts first, buy one speed or cargo tier early, and use the route preview to avoid flood-heavy lines.</p>
         </article>
+        <article class="card">
+          <strong>Next Unlock</strong>
+          <p class="muted">${nextEvent ? `Next route event at ${nextEvent.unlockRep} rep: ${nextEvent.label}` : "All route events unlocked."}</p>
+        </article>
       </div>
       ${state.message ? `<p class="muted" style="margin-top: 12px;">${state.message}</p>` : ""}
+    `;
+  } else if (state.uiScreen === "profile" && state.mode !== "run") {
+    const winRate = state.campaign.totalRuns ? Math.round((state.campaign.successfulRuns / state.campaign.totalRuns) * 100) : 0;
+    panel.innerHTML = `
+      <h2>Courier Profile</h2>
+      <div class="cards">
+        <article class="card">
+          <strong>Run Record</strong>
+          <p>Total runs: ${state.campaign.totalRuns}</p>
+          <p>Successful: ${state.campaign.successfulRuns}</p>
+          <p class="muted">Win rate: ${winRate}%</p>
+        </article>
+        <article class="card">
+          <strong>Profile State</strong>
+          <p>Tutorial: ${state.campaign.tutorialCompleted ? "Complete" : "Pending"}</p>
+          <p>Last played: ${state.profile.lastPlayedAt ? new Date(state.profile.lastPlayedAt).toLocaleString() : "No save yet"}</p>
+          <p class="muted">Use New Profile to restart all progress cleanly.</p>
+        </article>
+      </div>
+      <div class="control-row">
+        <button data-open-title="1">Back</button>
+        <button data-open-board="1">Continue</button>
+        <button data-new-profile="1">New Profile</button>
+      </div>
     `;
   } else if (state.uiScreen === "progression" && state.mode !== "run") {
     const availableDistricts = getAvailableDistricts();
     const unlockedVariants = getUnlockedBossVariants();
+    const unlockedEvents = getUnlockedContractEvents();
     panel.innerHTML = `
       <h2>Progression Overview</h2>
       <div class="cards">
@@ -1949,6 +2154,11 @@ function renderPanel() {
           <strong>Cosmetics</strong>
           <p>${bikeCosmetics.filter((item) => state.bikeOwned[item.key]).length}/${bikeCosmetics.length} owned</p>
           <p class="muted">Unlocked by rep and boss clears.</p>
+        </article>
+        <article class="card">
+          <strong>Route Events</strong>
+          <p>${unlockedEvents.map((event) => event.label).join(", ")}</p>
+          <p class="muted">${unlockedEvents.map((event) => event.desc).join(" | ")}</p>
         </article>
       </div>
       <div class="control-row">
@@ -2022,6 +2232,8 @@ function renderPanel() {
               <p>Visibility: ${c.forecast ? `${Math.round(c.forecast.visibility * 100)}%` : "--"} | Traction: ${c.forecast ? `${Math.round(c.forecast.traction * 100)}%` : "--"}</p>
               <p>Objective: <span class="warn">${c.objective ? c.objective.label : "Standard Delivery"}</span></p>
               <p class="muted">${describeContractObjective(c)}</p>
+              <p>Route Event: <span class="warn">${c.event ? c.event.label : "Clear Streets"}</span></p>
+              <p class="muted">${c.event ? c.event.desc : "No special route event."}</p>
               ${c.bossVariant ? `<p class="bad">Boss Variant: ${c.bossVariant.name}</p>` : ""}
               <p>Time Limit: ${c.timeLimit.toFixed(1)}s</p>
               <p>Risk: ${(c.risk * 10).toFixed(0)} / 18</p>
@@ -2159,9 +2371,10 @@ function renderPanel() {
       <h2>Active Run: ${c.district.name}</h2>
       <p class="muted">Package: ${c.trait.label} | Reward: ${c.reward} | Reach beacon before timer ends.</p>
       ${run ? `<p>Objective: <span class="warn">${c.objective ? c.objective.label : "Standard Delivery"}</span> | ${c.objective ? c.objective.desc : "Hit checkpoints and deliver."}</p>` : ""}
+      ${run ? `<p class="muted">District mechanic: ${run.districtMechanic.replace("_", " ")} | Route event: ${run.event ? run.event.label : "Clear Streets"}</p>` : ""}
       ${run ? `<p class="muted">Objective Progress: ${objectiveProgress}${c.objective && c.objective.key === "stealth" ? ` | Police contacts: ${run.policeHits}` : ""}${c.objective && c.objective.key === "no_damage" ? ` | Damage taken: ${run.tookDamage ? "Yes" : "No"}` : ""}${bossEscapeInfo}</p>` : ""}
       ${run ? `<p class="muted">Weather: ${run.weather.label} | Visibility ${Math.round(run.weather.visibility * 100)}% | Traction ${Math.round(run.weather.traction * 100)}%</p>` : ""}
-      ${run && run.tutorialOverlay ? `<p class="good">Tutorial: follow the highlighted lane if traffic gets heavy, and let the bike settle before changing lanes again.</p>` : ""}
+      ${run && run.tutorialOverlay ? `<p class="good">Tutorial: lanes show traffic flow only. Your bike will hold its line unless you steer.</p>` : ""}
       ${run && run.tutorialOverlay ? `<p class="muted">Priority order: checkpoint line first, traffic gaps second, gangs/patrols third. If rain or flood hits, lift off and re-center before turning hard again.</p>` : ""}
       ${run ? `<p class="${handlingPct < 72 ? "warn" : "muted"}">Bike condition is affecting control. Current handling: ${handlingPct}%</p>` : ""}
       ${illegal ? `<p class="bad">Wanted cargo: police interception risk is active.</p>` : ""}
@@ -2185,6 +2398,11 @@ function renderPanel() {
           <strong>${summary.success ? `+${summary.reward} credits` : `+${summary.reward} salvage`}</strong>
           <p>Integrity out: ${summary.integrity}%</p>
           <p class="muted">Heat shift: ${summary.heatText}</p>
+        </article>
+        <article class="card">
+          <strong>Career Totals</strong>
+          <p>Runs: ${state.campaign.totalRuns}</p>
+          <p class="muted">Successful: ${state.campaign.successfulRuns}</p>
         </article>
       </div>` : ""}
       <p>${state.message}</p>
@@ -3151,6 +3369,23 @@ function drawSpikeStrip(strip, elapsed) {
   ctx.restore();
 }
 
+function wrapCanvasText(targetCtx, text, maxWidth) {
+  const words = text.split(" ");
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (targetCtx.measureText(candidate).width <= maxWidth || !line) {
+      line = candidate;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 function drawStickPerson(member, elapsed) {
   const walk = Math.sin(elapsed * 8.4 + member.phase);
   const counter = Math.sin(elapsed * 8.4 + member.phase + Math.PI);
@@ -3330,6 +3565,40 @@ function drawRun(dt) {
   drawBackdrop(run);
   drawRouteGuidance(run, run.scrollX);
   const player = run.player;
+  const eventProps = run.eventProps;
+  if (eventProps.fakeNode && !eventProps.fakeNode.hit) {
+    const fx = eventProps.fakeNode.x - run.scrollX;
+    ctx.beginPath();
+    ctx.arc(fx, eventProps.fakeNode.y, eventProps.fakeNode.radius + Math.sin(run.elapsed * 5) * 2, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255, 102, 145, 0.35)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(fx, eventProps.fakeNode.y, eventProps.fakeNode.radius * 0.55, 0, Math.PI * 2);
+    ctx.fillStyle = "#ff6b98";
+    ctx.fill();
+  }
+  if (eventProps.shortcutGate && !eventProps.shortcutGate.used) {
+    const gate = eventProps.shortcutGate;
+    const gx = gate.x - run.scrollX;
+    ctx.fillStyle = "rgba(72, 168, 255, 0.14)";
+    ctx.fillRect(gx, gate.y, gate.w, gate.h);
+    ctx.strokeStyle = "rgba(110, 211, 255, 0.55)";
+    ctx.strokeRect(gx, gate.y, gate.w, gate.h);
+  }
+  eventProps.roadblocks.forEach((block) => {
+    const bx = block.x - run.scrollX;
+    ctx.fillStyle = "rgba(68, 54, 39, 0.9)";
+    ctx.fillRect(bx, block.y, block.w, block.h);
+    ctx.strokeStyle = "rgba(240, 201, 132, 0.72)";
+    ctx.strokeRect(bx, block.y, block.w, block.h);
+  });
+  if (eventProps.scannerSweep) {
+    const scan = eventProps.scannerSweep;
+    scan.pulse += dt;
+    const sx = scan.x - run.scrollX;
+    ctx.fillStyle = `rgba(122, 224, 255, ${0.08 + Math.sin(scan.pulse * 4) * 0.04})`;
+    ctx.fillRect(sx - scan.width * 0.5, 0, scan.width, HEIGHT);
+  }
   if (run.objectiveMarkers.length) {
     for (let i = run.objectiveIndex; i < run.objectiveMarkers.length; i += 1) {
       const marker = run.objectiveMarkers[i];
@@ -3432,6 +3701,22 @@ function drawRun(dt) {
     drawSpikeStrip({ ...strip, x: strip.x - run.scrollX }, run.elapsed);
   });
 
+  if (eventProps.movingHazard) {
+    const hazard = eventProps.movingHazard;
+    hazard.x += hazard.dir * hazard.speed * dt;
+    if (hazard.x < -120) {
+      hazard.x = run.worldWidth + 160;
+      hazard.y = run.laneYs[randi(0, run.laneYs.length - 1)];
+    }
+    const screenHazard = { ...hazard, x: hazard.x - run.scrollX };
+    drawTrafficCar(screenHazard);
+    if (collisionWithRectCircle(player, { x: screenHazard.x - hazard.w * 0.5, y: screenHazard.y - hazard.h * 0.5, w: hazard.w, h: hazard.h })) {
+      applyDamage(hazard.kind === "truck" ? 20 : 15, "traffic");
+      setImpactIndicator(screenHazard.x, screenHazard.y, 1);
+      player.vx = hazard.dir * Math.max(96, Math.abs(player.vx) * 0.42);
+    }
+  }
+
   const inputX = (keys.has("ArrowRight") || keys.has("d") ? 1 : 0) - (keys.has("ArrowLeft") || keys.has("a") ? 1 : 0);
   const inputY = (keys.has("ArrowDown") || keys.has("s") ? 1 : 0) - (keys.has("ArrowUp") || keys.has("w") ? 1 : 0);
   let nearestLaneIndex = 0;
@@ -3451,6 +3736,18 @@ function drawRun(dt) {
       floodSlow = Math.min(floodSlow, 0.65);
       break;
     }
+  }
+
+  if (run.districtMechanic === "crosswind") {
+    player.vy += Math.sin(run.elapsed * 1.4) * 18 * dt;
+  } else if (run.districtMechanic === "debris_kick" && Math.sin(run.elapsed * 0.9) > 0.92) {
+    player.vy += Math.sin(run.elapsed * 12) * 6 * dt;
+  } else if (run.districtMechanic === "wake_surge") {
+    run.traffic.forEach((car) => {
+      if (Math.abs((car.x - run.scrollX) - player.x) < 48 && Math.abs(car.y - player.y) < 22) {
+        player.vy += Math.sign(player.y - car.y || 1) * 10 * dt;
+      }
+    });
   }
 
   const handlingDrag = clamp(player.drag + (1 - run.weather.traction) * 0.08, 0.89, 0.985);
@@ -3483,10 +3780,6 @@ function drawRun(dt) {
   } else {
     player.vx += inputX * player.accel * accelScale * dt;
     player.vy += inputY * player.accel * accelScale * dt;
-    if (Math.abs(inputY) < 0.2) {
-      const laneAssist = (run.laneYs[run.currentLaneIndex] - player.y) * 4.8;
-      player.vy += laneAssist * dt;
-    }
     run.spinVisualVel *= Math.max(0, 1 - dt * 10);
     run.spinVisualAngle *= Math.max(0, 1 - dt * 8);
   }
@@ -3593,6 +3886,42 @@ function drawRun(dt) {
     }
   }
 
+  if (eventProps.fakeNode && !eventProps.fakeNode.hit && Math.hypot(player.x - (eventProps.fakeNode.x - run.scrollX), player.y - eventProps.fakeNode.y) < player.radius + eventProps.fakeNode.radius) {
+    eventProps.fakeNode.hit = true;
+    run.time -= 0.9;
+    state.message = "Fake checkpoint. Real route node still ahead.";
+    state.panelDirty = true;
+  }
+
+  if (eventProps.shortcutGate && !eventProps.shortcutGate.used) {
+    const gate = eventProps.shortcutGate;
+    if (collisionWithRectCircle(player, { x: gate.x - run.scrollX, y: gate.y, w: gate.w, h: gate.h })) {
+      gate.used = true;
+      run.time += 1.6;
+      state.message = "Shortcut alley hit. Time recovered.";
+      state.panelDirty = true;
+    }
+  }
+
+  if (eventProps.scannerSweep && !eventProps.scannerSweep.hitIllegal && state.currentContract.trait.key === "illegal") {
+    const scan = eventProps.scannerSweep;
+    if (Math.abs((scan.x - run.scrollX) - player.x) < scan.width * 0.5) {
+      scan.hitIllegal = true;
+      run.time -= 1.2;
+      run.chaseStart = Math.min(run.chaseStart, run.elapsed + 0.12);
+      state.message = "Scanner sweep tagged the cargo. Police response accelerated.";
+      state.panelDirty = true;
+    }
+  }
+
+  for (const block of eventProps.roadblocks) {
+    if (collisionWithRectCircle(player, { x: block.x - run.scrollX, y: block.y, w: block.w, h: block.h })) {
+      applyDamage(10, "patrol");
+      setImpactIndicator(block.x - run.scrollX + block.w * 0.5, block.y + block.h * 0.5, 0.8);
+      player.vx *= 0.76;
+    }
+  }
+
   for (const strip of run.spikeStrips) {
     const sx = strip.x - run.scrollX;
     if (collisionWithRectCircle(player, { x: sx - strip.w * 0.5, y: strip.y - strip.h * 0.5, w: strip.w, h: strip.h })) {
@@ -3672,6 +4001,19 @@ function drawRun(dt) {
     ctx.textAlign = "left";
   }
 
+  if (run.event && run.event.key !== "none" && run.elapsed < 3.5) {
+    const eventText = `${run.event.label}: ${run.event.desc}`;
+    ctx.font = "bold 15px Trebuchet MS";
+    const eventLines = wrapCanvasText(ctx, eventText, 332).slice(0, 2);
+    const boxHeight = 18 + eventLines.length * 18;
+    ctx.fillStyle = "rgba(16, 29, 48, 0.8)";
+    ctx.fillRect(18, 18, 356, boxHeight);
+    ctx.fillStyle = "#cbefff";
+    eventLines.forEach((line, index) => {
+      ctx.fillText(line, 30, 39 + index * 18);
+    });
+  }
+
   if (run.checkpointFlash > 0) {
     ctx.fillStyle = `rgba(255, 212, 110, ${run.checkpointFlash})`;
     ctx.font = "bold 18px Trebuchet MS";
@@ -3686,6 +4028,24 @@ function drawRun(dt) {
     ctx.textAlign = "center";
     ctx.fillText(`NEAR MISS x${run.nearMisses}`, WIDTH * 0.5, 82);
     ctx.textAlign = "left";
+  }
+
+  if (run.tutorialStep >= 0) {
+    if (run.routeNodeIndex >= 1) run.tutorialStep = Math.max(run.tutorialStep, 1);
+    if (run.nearMisses > 0 || run.elapsed > 4) run.tutorialStep = Math.max(run.tutorialStep, 2);
+    if (run.routeNodeIndex >= run.routePath.length - 1) run.tutorialStep = 3;
+    const tutorialLines = [
+      "Tutorial: follow the route line to the first checkpoint.",
+      "Tutorial: lanes show traffic flow. Steer manually to dodge and reposition.",
+      "Tutorial: route events can help or punish. Read the contract board.",
+      "Tutorial: deliver clean to unlock the full city loop."
+    ];
+    const step = clamp(run.tutorialStep, 0, tutorialLines.length - 1);
+    ctx.fillStyle = "rgba(17, 31, 51, 0.72)";
+    ctx.fillRect(18, HEIGHT - 64, WIDTH - 36, 40);
+    ctx.fillStyle = "#d7f4ff";
+    ctx.font = "bold 16px Trebuchet MS";
+    ctx.fillText(tutorialLines[step], 32, HEIGHT - 38);
   }
 
   if (run.hitFlash > 0) {
@@ -3810,10 +4170,20 @@ panel.addEventListener("click", (e) => {
     state.panelDirty = true;
   }
 
+  if (target.dataset.openProfile) {
+    state.mode = "contracts";
+    state.uiScreen = "profile";
+    state.panelDirty = true;
+  }
+
   if (target.dataset.openTitle) {
     state.mode = "contracts";
     state.uiScreen = "title";
     state.panelDirty = true;
+  }
+
+  if (target.dataset.newProfile) {
+    resetProfileProgress();
   }
 
   if (target.dataset.waypointUndo) {
