@@ -2,13 +2,17 @@
   --bg0: #0a0f1e;
   --bg1: #101a33;
   --bg2: #1f2b4d;
-  --panel: #101a2ccc;
+  --panel: rgba(10, 19, 37, 0.78);
+  --panel-solid: #0d1830;
   --text: #e8f1ff;
   --muted: #a9b7d6;
   --accent: #1de0ff;
+  --accent-soft: rgba(29, 224, 255, 0.18);
   --good: #6cff9a;
   --warn: #ffcf58;
   --bad: #ff5f7f;
+  --line: rgba(123, 177, 225, 0.28);
+  --shadow: 0 18px 36px rgba(2, 7, 18, 0.34);
 }
 
 * {
@@ -18,12 +22,13 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
   color: var(--text);
   background:
     radial-gradient(circle at 20% 10%, #233b7a 0%, transparent 34%),
     radial-gradient(circle at 80% 5%, #1f5a63 0%, transparent 25%),
     linear-gradient(160deg, var(--bg0), var(--bg1) 50%, var(--bg2));
+  background-attachment: fixed;
 }
 
 .app {
@@ -31,18 +36,43 @@ body {
   margin: 0 auto;
   padding: 20px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
+}
+
+.topbar {
+  padding: 18px 20px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(12, 27, 52, 0.9), rgba(9, 18, 35, 0.74)),
+    radial-gradient(circle at top left, rgba(61, 169, 255, 0.18), transparent 38%);
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.topbar::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -50% 55%;
+  height: 160px;
+  background: radial-gradient(circle, rgba(34, 219, 255, 0.12), transparent 65%);
+  pointer-events: none;
 }
 
 .topbar h1 {
+  position: relative;
   margin: 0;
-  font-size: clamp(1.5rem, 2vw, 2.3rem);
-  letter-spacing: 0.04em;
+  font-size: clamp(1.7rem, 2.3vw, 2.7rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .topbar p {
+  position: relative;
   margin: 6px 0 0;
   color: var(--muted);
+  max-width: 760px;
 }
 
 .hud,
@@ -50,22 +80,26 @@ body {
 .controls,
 .legend {
   background: var(--panel);
-  border: 1px solid #2e4c75;
-  border-radius: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
 }
 
 .hud {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
-  padding: 10px;
+  gap: 12px;
+  padding: 12px;
 }
 
 .stat {
-  padding: 8px;
-  background: #0b1323;
-  border-radius: 10px;
-  border: 1px solid #274162;
+  padding: 10px 11px;
+  background:
+    linear-gradient(180deg, rgba(6, 14, 27, 0.92), rgba(8, 19, 38, 0.8));
+  border-radius: 12px;
+  border: 1px solid rgba(80, 128, 180, 0.38);
+  box-shadow: inset 0 1px 0 rgba(192, 225, 255, 0.06);
 }
 
 .label {
@@ -76,42 +110,59 @@ body {
 }
 
 .value {
-  font-size: 1.15rem;
-  margin-top: 2px;
+  font-size: 1.22rem;
+  margin-top: 4px;
+  font-weight: 700;
 }
 
 .panel {
-  padding: 14px;
-  line-height: 1.35;
+  padding: 16px;
+  line-height: 1.4;
 }
 
 .panel h2 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   font-size: 1.08rem;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .card {
-  border: 1px solid #32567b;
-  border-radius: 10px;
-  background: #0d1a2f;
-  padding: 10px;
+  border: 1px solid rgba(77, 128, 183, 0.42);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(13, 27, 49, 0.96), rgba(10, 21, 39, 0.88));
+  padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(214, 236, 255, 0.04);
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(109, 191, 255, 0.56);
+  box-shadow: inset 0 1px 0 rgba(214, 236, 255, 0.05), 0 10px 22px rgba(0, 0, 0, 0.18);
+}
+
+.card strong {
+  display: block;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
 }
 
 .card.selected {
-  border-color: #1de0ff;
-  box-shadow: 0 0 0 1px #1de0ff55;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(29, 224, 255, 0.4), 0 0 22px rgba(29, 224, 255, 0.12);
 }
 
 .card p {
-  margin: 5px 0;
-  font-size: 0.88rem;
+  margin: 6px 0;
+  font-size: 0.89rem;
   color: var(--muted);
 }
 
@@ -150,22 +201,33 @@ body {
 }
 
 button {
-  border: 1px solid #3a729f;
-  background: linear-gradient(180deg, #123d5e, #0b2943);
+  border: 1px solid rgba(86, 156, 212, 0.65);
+  background:
+    linear-gradient(180deg, rgba(18, 67, 104, 0.98), rgba(9, 37, 61, 0.98));
   color: var(--text);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 10px;
+  padding: 9px 12px;
   cursor: pointer;
   font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 1px 0 rgba(219, 239, 255, 0.09);
+  transition: transform 120ms ease, filter 120ms ease, border-color 120ms ease;
 }
 
 button:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  border-color: rgba(119, 206, 255, 0.88);
+}
+
+button:active {
+  transform: translateY(0);
 }
 
 button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+  transform: none;
 }
 
 .game-wrap {
@@ -175,13 +237,14 @@ button:disabled {
 
 canvas {
   width: 100%;
-  border-radius: 12px;
-  border: 1px solid #2f5b86;
+  border-radius: 16px;
+  border: 1px solid rgba(81, 142, 191, 0.6);
   background: #08101d;
+  box-shadow: inset 0 0 0 1px rgba(166, 209, 255, 0.05);
 }
 
 .legend {
-  padding: 8px 10px;
+  padding: 10px 12px;
   display: flex;
   gap: 14px;
   flex-wrap: wrap;
@@ -204,7 +267,7 @@ canvas {
 .flood { background: #4a7fbf; }
 
 .controls {
-  padding: 8px 10px;
+  padding: 10px 12px;
   color: var(--muted);
 }
 
@@ -213,20 +276,23 @@ canvas {
   grid-template-columns: 250px 1fr;
   gap: 12px;
   align-items: start;
-  background: #0b1323;
-  border: 1px solid #274162;
-  border-radius: 10px;
-  padding: 10px;
+  background: linear-gradient(180deg, rgba(10, 20, 37, 0.92), rgba(8, 17, 31, 0.84));
+  border: 1px solid rgba(75, 124, 175, 0.35);
+  border-radius: 14px;
+  padding: 12px;
 }
 
 #routePreview {
-  border: 1px solid #2f5b86;
-  border-radius: 8px;
+  border: 1px solid rgba(84, 148, 201, 0.58);
+  border-radius: 12px;
   background: #08101d;
 }
 
 .control-row {
   margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .muted {
